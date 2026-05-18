@@ -1,7 +1,7 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
-from ..models.alarm import Alarm, AlarmCategory, Severity
+from pydantic import BaseModel, Field
+from ..models.alarm import Alarm, AlarmCategory, AlarmState, Severity
 from ..store import InMemoryAlarmStore, get_alarm_store
 
 router = APIRouter(prefix="/agent/alarms", tags=["agent"])
@@ -49,6 +49,31 @@ class AgentDeltaResponse(BaseModel):
     alarms: list[AgentAlarm]
     cursor: str | None = None
     total: int
+
+
+class BatchQueryRequest(BaseModel):
+    severity: list[Severity] | None = None
+    category: list[AlarmCategory] | None = None
+    state: list[AlarmState] | None = None
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+@router.post("/get-many", response_model=AgentAlarmListResponse)
+def agent_get_many(
+    body: BatchQueryRequest,
+    store: InMemoryAlarmStore = Depends(get_alarm_store),
+) -> AgentAlarmListResponse:
+    alarms = store.list_many(
+        categories=body.category,
+        severities=body.severity,
+        states=body.state,
+        limit=body.limit,
+    )
+    return AgentAlarmListResponse(
+        alarms=[AgentAlarm.from_alarm(a) for a in alarms],
+        cursor=None,
+        total=len(alarms),
+    )
 
 
 @router.get("/delta", response_model=AgentDeltaResponse)

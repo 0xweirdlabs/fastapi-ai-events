@@ -256,6 +256,106 @@ def test_filter_alarms_by_severity():
     assert data["alarms"][0]["perceived_severity"] == "critical"
 
 
+# --- batch query ---
+
+def test_batch_empty_body_returns_all_alarms():
+    client = make_client(InMemoryAlarmStore())
+    client.post("/alarms", json=make_network_alarm())
+    client.post("/alarms", json={**make_network_alarm(), "alarm_category": "host"})
+
+    response = client.post("/agent/alarms/get-many", json={})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+
+
+def test_batch_filter_by_single_severity():
+    client = make_client(InMemoryAlarmStore())
+    client.post("/alarms", json=make_network_alarm())
+    client.post("/alarms", json={**make_network_alarm(), "perceived_severity": "minor"})
+
+    response = client.post("/agent/alarms/get-many", json={"severity": ["critical"]})
+
+    assert response.json()["total"] == 1
+    assert response.json()["alarms"][0]["sev"] == "critical"
+
+
+def test_batch_filter_by_multiple_severities():
+    client = make_client(InMemoryAlarmStore())
+    client.post("/alarms", json=make_network_alarm())
+    client.post("/alarms", json={**make_network_alarm(), "perceived_severity": "major"})
+    client.post("/alarms", json={**make_network_alarm(), "perceived_severity": "minor"})
+
+    response = client.post("/agent/alarms/get-many", json={"severity": ["critical", "major"]})
+
+    assert response.json()["total"] == 2
+
+
+def test_batch_filter_by_category():
+    client = make_client(InMemoryAlarmStore())
+    client.post("/alarms", json=make_network_alarm())
+    client.post("/alarms", json={**make_network_alarm(), "alarm_category": "host"})
+
+    response = client.post("/agent/alarms/get-many", json={"category": ["network"]})
+
+    assert response.json()["total"] == 1
+    assert response.json()["alarms"][0]["cat"] == "network"
+
+
+def test_batch_filter_by_state():
+    client = make_client(InMemoryAlarmStore())
+    alarm_id = client.post("/alarms", json=make_network_alarm()).json()["id"]
+    client.post("/alarms", json=make_network_alarm())
+    client.patch(f"/alarms/{alarm_id}/state", json={"state": "acknowledged"})
+
+    response = client.post("/agent/alarms/get-many", json={"state": ["acknowledged"]})
+
+    assert response.json()["total"] == 1
+    assert response.json()["alarms"][0]["st"] == "acknowledged"
+
+
+def test_batch_combined_filters():
+    client = make_client(InMemoryAlarmStore())
+    client.post("/alarms", json=make_network_alarm())
+    client.post("/alarms", json={**make_network_alarm(), "alarm_category": "host"})
+    client.post("/alarms", json={**make_network_alarm(), "perceived_severity": "minor"})
+
+    response = client.post("/agent/alarms/get-many", json={"category": ["network"], "severity": ["critical"]})
+
+    assert response.json()["total"] == 1
+
+
+def test_batch_response_uses_compact_field_names():
+    client = make_client(InMemoryAlarmStore())
+    client.post("/alarms", json=make_network_alarm())
+
+    response = client.post("/agent/alarms/get-many", json={})
+
+    alarm = response.json()["alarms"][0]
+    assert "cat" in alarm
+    assert "sev" in alarm
+    assert "alarm_category" not in alarm
+
+
+def test_batch_invalid_severity_returns_422():
+    client = make_client(InMemoryAlarmStore())
+
+    response = client.post("/agent/alarms/get-many", json={"severity": ["not_a_severity"]})
+
+    assert response.status_code == 422
+
+
+def test_batch_limit_caps_results():
+    client = make_client(InMemoryAlarmStore())
+    for _ in range(5):
+        client.post("/alarms", json=make_network_alarm())
+
+    response = client.post("/agent/alarms/get-many", json={"limit": 3})
+
+    assert len(response.json()["alarms"]) == 3
+    assert response.json()["total"] == 3
+
+
 # --- delta sync ---
 
 def test_delta_returns_alarms_raised_after_since():

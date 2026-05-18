@@ -29,6 +29,22 @@ class InMemoryAlarmStore:
     def get_by_id(self, alarm_id: str) -> Alarm | None:
         return next((a for a in self._alarms if a.id == alarm_id), None)
 
+    def list_many(
+        self,
+        categories: list[AlarmCategory] | None = None,
+        severities: list[Severity] | None = None,
+        states: list[AlarmState] | None = None,
+        limit: int = 50,
+    ) -> list[Alarm]:
+        results = self._alarms
+        if categories:
+            results = [a for a in results if a.alarm_category in categories]
+        if severities:
+            results = [a for a in results if a.perceived_severity in severities]
+        if states:
+            results = [a for a in results if a.alarm_state in states]
+        return results[:limit]
+
     def list_since(
         self,
         since: datetime,
