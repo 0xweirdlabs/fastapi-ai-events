@@ -39,3 +39,10 @@ htmlcov/
 # Claude Code (skills, commands, local settings)
 .claude/
 .agents/
+
+# Project planning and AI tooling docs
+CLAUDE.md
+CONTEXT.md
+prd-concept.md
+idea.md
+skills-lock.json
