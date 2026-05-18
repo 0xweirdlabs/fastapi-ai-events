@@ -36,5 +36,6 @@ htmlcov/
 # mypy
 .mypy_cache/
 
-# Claude Code local settings (machine-specific permissions)
-.claude/settings.local.json
+# Claude Code (skills, commands, local settings)
+.claude/
+.agents/
