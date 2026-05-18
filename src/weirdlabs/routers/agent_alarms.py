@@ -19,6 +19,7 @@ class AgentAlarm(BaseModel):
     ts: str
     obj: AgentManagedObject
     par: str | None = None
+    ext: dict | None = None
 
     @classmethod
     def from_alarm(cls, alarm: Alarm) -> "AgentAlarm":
@@ -33,6 +34,7 @@ class AgentAlarm(BaseModel):
                 typ=alarm.managed_object.type,
             ),
             par=alarm.parent_alarm_id,
+            ext=alarm.extension.to_compact_dict() if alarm.extension else None,
         )
 
 

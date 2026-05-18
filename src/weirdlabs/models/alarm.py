@@ -1,7 +1,8 @@
 from enum import StrEnum
 from datetime import datetime, timezone
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 import uuid
+from .extensions import AlarmExtension
 
 
 def _now() -> datetime:
@@ -50,6 +51,13 @@ class ManagedObject(BaseModel):
     ci_id: str | None = None
 
 
+def _validate_extension_category(alarm_category: str, extension: Any) -> None:
+    if extension is not None and extension.category != alarm_category:
+        raise ValueError(
+            f"Extension category '{extension.category}' does not match alarm_category '{alarm_category}'"
+        )
+
+
 class AlarmCreate(BaseModel):
     alarm_category: AlarmCategory
     perceived_severity: Severity
@@ -57,6 +65,12 @@ class AlarmCreate(BaseModel):
     alarm_raised_time: datetime
     managed_object: ManagedObject
     parent_alarm_id: str | None = None
+    extension: AlarmExtension | None = None
+
+    @model_validator(mode="after")
+    def extension_matches_category(self) -> "AlarmCreate":
+        _validate_extension_category(self.alarm_category, self.extension)
+        return self
 
 
 VALID_TRANSITIONS: dict[AlarmState, set[AlarmState]] = {
@@ -78,3 +92,9 @@ class Alarm(BaseModel):
     updated_at: datetime = Field(default_factory=_now)
     managed_object: ManagedObject
     parent_alarm_id: str | None = None
+    extension: AlarmExtension | None = None
+
+    @model_validator(mode="after")
+    def extension_matches_category(self) -> "Alarm":
+        _validate_extension_category(self.alarm_category, self.extension)
+        return self

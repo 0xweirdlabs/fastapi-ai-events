@@ -77,6 +77,144 @@ def test_agent_list_alarms_returns_compact_field_names():
     assert "perceived_severity" not in alarm
 
 
+def make_network_alarm_with_extension() -> dict:
+    return {
+        **make_network_alarm(),
+        "extension": {
+            "category": "network",
+            "interface": "GigabitEthernet0/1",
+            "topology_element": "interface",
+            "protocol": "BGP",
+        },
+    }
+
+
+# --- extensions ---
+
+def test_post_alarm_with_network_extension_stores_and_returns_it():
+    client = make_client(InMemoryAlarmStore())
+
+    response = client.post("/alarms", json=make_network_alarm_with_extension())
+
+    assert response.status_code == 201
+    ext = response.json()["extension"]
+    assert ext["interface"] == "GigabitEthernet0/1"
+    assert ext["topology_element"] == "interface"
+    assert ext["protocol"] == "BGP"
+
+
+def test_get_alarms_returns_extension_with_verbose_keys():
+    client = make_client(InMemoryAlarmStore())
+    client.post("/alarms", json=make_network_alarm_with_extension())
+
+    data = client.get("/alarms").json()
+
+    ext = data["alarms"][0]["extension"]
+    assert "interface" in ext
+    assert "topology_element" in ext
+
+
+def test_agent_alarms_returns_compact_extension_keys():
+    client = make_client(InMemoryAlarmStore())
+    client.post("/alarms", json=make_network_alarm_with_extension())
+
+    data = client.get("/agent/alarms").json()
+
+    ext = data["alarms"][0]["ext"]
+    assert ext["iface"] == "GigabitEthernet0/1"
+    assert ext["topo"] == "interface"
+    assert "interface" not in ext
+
+
+def test_extension_category_mismatch_returns_422():
+    client = make_client(InMemoryAlarmStore())
+    body = {
+        **make_network_alarm(),
+        "extension": {
+            "category": "host",
+            "metric": "cpu_load",
+            "current_value": 95.0,
+            "threshold": 90.0,
+            "unit": "%",
+        },
+    }
+
+    response = client.post("/alarms", json=body)
+
+    assert response.status_code == 422
+
+
+def test_post_host_alarm_with_extension():
+    client = make_client(InMemoryAlarmStore())
+    body = {
+        **make_network_alarm(),
+        "alarm_category": "host",
+        "extension": {
+            "category": "host",
+            "metric": "disk_usage",
+            "current_value": 98.5,
+            "threshold": 90.0,
+            "unit": "%",
+        },
+    }
+
+    response = client.post("/alarms", json=body)
+
+    assert response.status_code == 201
+    ext = response.json()["extension"]
+    assert ext["metric"] == "disk_usage"
+    assert ext["current_value"] == 98.5
+
+
+def test_post_database_alarm_with_impacted_services():
+    client = make_client(InMemoryAlarmStore())
+    body = {
+        **make_network_alarm(),
+        "alarm_category": "database",
+        "extension": {
+            "category": "database",
+            "impacted_services": [
+                {"id": "svc_001", "label": "Billing Dashboard"},
+                {"id": "svc_002", "label": "Customer Portal"},
+            ],
+        },
+    }
+
+    response = client.post("/alarms", json=body)
+
+    assert response.status_code == 201
+    svcs = response.json()["extension"]["impacted_services"]
+    assert len(svcs) == 2
+    assert svcs[0]["label"] == "Billing Dashboard"
+
+
+def test_post_security_cve_alarm_with_scores():
+    client = make_client(InMemoryAlarmStore())
+    body = {
+        **make_network_alarm(),
+        "alarm_category": "security",
+        "extension": {
+            "category": "security",
+            "security_type": "cve",
+            "cve_id": "CVE-2024-12345",
+            "affected_software": "openssl",
+            "affected_version": "3.0.1",
+            "scores": [
+                {"method": "cvss", "value": 9.8, "scale": "0-10"},
+            ],
+        },
+    }
+
+    response = client.post("/alarms", json=body)
+
+    assert response.status_code == 201
+    ext = response.json()["extension"]
+    assert ext["cve_id"] == "CVE-2024-12345"
+    assert ext["scores"][0]["method"] == "cvss"
+
+
+# --- filters ---
+
 def test_filter_alarms_by_category():
     from weirdlabs.models.alarm import Alarm
 
