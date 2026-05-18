@@ -43,7 +43,23 @@ def create_alarm(
     payload: AlarmCreate,
     store: InMemoryAlarmStore = Depends(get_alarm_store),
 ) -> Alarm:
+    if payload.parent_alarm_id and store.get_by_id(payload.parent_alarm_id) is None:
+        raise HTTPException(status_code=422, detail=f"Parent alarm '{payload.parent_alarm_id}' not found")
     return store.create_alarm(payload)
+
+
+@router.get("/{alarm_id}/correlated", response_model=AlarmListResponse)
+def list_correlated(
+    alarm_id: str,
+    store: InMemoryAlarmStore = Depends(get_alarm_store),
+) -> AlarmListResponse:
+    if store.get_by_id(alarm_id) is None:
+        raise HTTPException(status_code=404, detail=f"Alarm {alarm_id} not found")
+    alarms = store.list_correlated(alarm_id)
+    return AlarmListResponse(
+        alarms=alarms,
+        pagination=Pagination(page=1, page_size=len(alarms) or 20, total=len(alarms)),
+    )
 
 
 @router.get("", response_model=AlarmListResponse)

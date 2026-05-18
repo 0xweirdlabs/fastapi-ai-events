@@ -256,6 +256,72 @@ def test_filter_alarms_by_severity():
     assert data["alarms"][0]["perceived_severity"] == "critical"
 
 
+# --- alarm correlation ---
+
+def test_post_alarm_with_valid_parent_creates_correlated_alarm():
+    client = make_client(InMemoryAlarmStore())
+    parent_id = client.post("/alarms", json=make_network_alarm()).json()["id"]
+
+    response = client.post("/alarms", json={**make_network_alarm(), "parent_alarm_id": parent_id})
+
+    assert response.status_code == 201
+    assert response.json()["parent_alarm_id"] == parent_id
+
+
+def test_post_alarm_with_nonexistent_parent_returns_422():
+    client = make_client(InMemoryAlarmStore())
+
+    response = client.post("/alarms", json={**make_network_alarm(), "parent_alarm_id": "alm_nope"})
+
+    assert response.status_code == 422
+
+
+def test_get_correlated_returns_direct_children():
+    client = make_client(InMemoryAlarmStore())
+    parent_id = client.post("/alarms", json=make_network_alarm()).json()["id"]
+    client.post("/alarms", json={**make_network_alarm(), "parent_alarm_id": parent_id})
+    client.post("/alarms", json={**make_network_alarm(), "parent_alarm_id": parent_id})
+
+    response = client.get(f"/alarms/{parent_id}/correlated")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["alarms"]) == 2
+    assert all(a["parent_alarm_id"] == parent_id for a in data["alarms"])
+
+
+def test_get_correlated_returns_empty_list_for_root_alarm():
+    client = make_client(InMemoryAlarmStore())
+    parent_id = client.post("/alarms", json=make_network_alarm()).json()["id"]
+
+    response = client.get(f"/alarms/{parent_id}/correlated")
+
+    assert response.status_code == 200
+    assert response.json()["alarms"] == []
+
+
+def test_get_correlated_returns_404_for_unknown_alarm():
+    client = make_client(InMemoryAlarmStore())
+
+    response = client.get("/alarms/alm_unknown/correlated")
+
+    assert response.status_code == 404
+
+
+def test_agent_get_correlated_returns_compact_children():
+    client = make_client(InMemoryAlarmStore())
+    parent_id = client.post("/alarms", json=make_network_alarm()).json()["id"]
+    client.post("/alarms", json={**make_network_alarm(), "parent_alarm_id": parent_id})
+
+    response = client.get(f"/agent/alarms/{parent_id}/correlated")
+
+    assert response.status_code == 200
+    alarm = response.json()["alarms"][0]
+    assert alarm["cat"] == "network"
+    assert alarm["par"] == parent_id
+    assert "alarm_category" not in alarm
+
+
 # --- batch query ---
 
 def test_batch_empty_body_returns_all_alarms():

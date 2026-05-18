@@ -29,6 +29,9 @@ class InMemoryAlarmStore:
     def get_by_id(self, alarm_id: str) -> Alarm | None:
         return next((a for a in self._alarms if a.id == alarm_id), None)
 
+    def list_correlated(self, parent_id: str) -> list[Alarm]:
+        return [a for a in self._alarms if a.parent_alarm_id == parent_id]
+
     def list_many(
         self,
         categories: list[AlarmCategory] | None = None,

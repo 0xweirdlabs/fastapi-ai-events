@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from ..models.alarm import Alarm, AlarmCategory, AlarmState, Severity
 from ..store import InMemoryAlarmStore, get_alarm_store
@@ -87,6 +87,21 @@ def agent_delta(
     return AgentDeltaResponse(
         alarms=[AgentAlarm.from_alarm(a) for a in alarms],
         cursor=next_cursor.isoformat() if next_cursor else None,
+        total=len(alarms),
+    )
+
+
+@router.get("/{alarm_id}/correlated", response_model=AgentAlarmListResponse)
+def agent_list_correlated(
+    alarm_id: str,
+    store: InMemoryAlarmStore = Depends(get_alarm_store),
+) -> AgentAlarmListResponse:
+    if store.get_by_id(alarm_id) is None:
+        raise HTTPException(status_code=404, detail=f"Alarm {alarm_id} not found")
+    alarms = store.list_correlated(alarm_id)
+    return AgentAlarmListResponse(
+        alarms=[AgentAlarm.from_alarm(a) for a in alarms],
+        cursor=None,
         total=len(alarms),
     )
 
