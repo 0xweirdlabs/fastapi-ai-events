@@ -1,0 +1,3 @@
+# Alarm state: suppressed and in_maintenance are distinct states
+
+The alarm lifecycle has two "inactive but not cleared" states rather than one. `in_maintenance` is time-bounded and tied to a planned maintenance window on the ManagedObject — it is set and cleared by the maintenance scheduling system. `suppressed` is applied manually to a specific alarm instance with no defined end time — it means "we know, don't surface this right now." Collapsing them into a single state was considered but rejected: the trigger, owner, and expiry behaviour are different enough that merging them would require out-of-band metadata to reconstruct the distinction, and API consumers need to filter on each independently.

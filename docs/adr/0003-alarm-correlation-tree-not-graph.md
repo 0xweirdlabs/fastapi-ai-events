@@ -1,0 +1,3 @@
+# Alarm correlation uses a parent/child tree, not a flat list or graph
+
+Alarm relationships are modelled as a strict tree: every alarm has at most one `parent_alarm_id` pointing to its root cause, and the root cause alarm has none. TMF642's flat `correlatedAlarm` list (no directionality) and a full graph model (multiple parents) were both considered. The tree was chosen because NOC workflows centre on identifying *the* root cause and suppressing correlated noise — a flat list makes traversal ambiguous and a graph makes root-cause identification harder without additional tooling. If a genuine multi-parent case arises, revisit.
