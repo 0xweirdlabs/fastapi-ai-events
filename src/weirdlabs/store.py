@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from .models.alarm import Alarm, AlarmCreate, AlarmCategory, Severity, AlarmState
+from .models.alarm import Alarm, AlarmCreate, AlarmCategory, AlarmState, Severity
 
 
 class InMemoryAlarmStore:
@@ -28,6 +28,22 @@ class InMemoryAlarmStore:
 
     def get_by_id(self, alarm_id: str) -> Alarm | None:
         return next((a for a in self._alarms if a.id == alarm_id), None)
+
+    def list_since(
+        self,
+        since: datetime,
+        cursor: datetime | None = None,
+        limit: int = 50,
+    ) -> tuple[list[Alarm], datetime | None]:
+        cutoff = cursor if cursor is not None else since
+        results = sorted(
+            [a for a in self._alarms if a.updated_at > cutoff],
+            key=lambda a: a.updated_at,
+        )
+        has_more = len(results) > limit
+        page = results[:limit]
+        next_cursor = page[-1].updated_at if has_more else None
+        return page, next_cursor
 
     def transition_state(self, alarm_id: str, new_state: AlarmState) -> Alarm:
         alarm = self.get_by_id(alarm_id)

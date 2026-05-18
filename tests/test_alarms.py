@@ -1,6 +1,15 @@
+from datetime import datetime, timezone, timedelta
 from fastapi.testclient import TestClient
 from weirdlabs.main import app
 from weirdlabs.store import InMemoryAlarmStore, get_alarm_store
+
+
+def ts_past(seconds: int = 60) -> str:
+    return (datetime.now(timezone.utc) - timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def ts_future(seconds: int = 60) -> str:
+    return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def make_client(store: InMemoryAlarmStore) -> TestClient:
@@ -245,6 +254,89 @@ def test_filter_alarms_by_severity():
     data = response.json()
     assert data["pagination"]["total"] == 1
     assert data["alarms"][0]["perceived_severity"] == "critical"
+
+
+# --- delta sync ---
+
+def test_delta_returns_alarms_raised_after_since():
+    client = make_client(InMemoryAlarmStore())
+    since = ts_past(60)
+    client.post("/alarms", json=make_network_alarm())
+
+    response = client.get(f"/agent/alarms/delta?since={since}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["alarms"][0]["cat"] == "network"
+
+
+def test_delta_excludes_alarms_before_since():
+    client = make_client(InMemoryAlarmStore())
+    client.post("/alarms", json=make_network_alarm())
+    since = ts_future(60)
+
+    response = client.get(f"/agent/alarms/delta?since={since}")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 0
+
+
+def test_delta_returns_alarm_after_state_transition():
+    client = make_client(InMemoryAlarmStore())
+    alarm_id = client.post("/alarms", json=make_network_alarm()).json()["id"]
+    since = ts_future(0)
+    client.patch(f"/alarms/{alarm_id}/state", json={"state": "acknowledged"})
+
+    response = client.get(f"/agent/alarms/delta?since={since}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    assert data["alarms"][0]["st"] == "acknowledged"
+
+
+def test_delta_returns_cleared_alarms():
+    client = make_client(InMemoryAlarmStore())
+    alarm_id = client.post("/alarms", json=make_network_alarm()).json()["id"]
+    since = ts_future(0)
+    client.patch(f"/alarms/{alarm_id}/state", json={"state": "cleared"})
+
+    response = client.get(f"/agent/alarms/delta?since={since}")
+
+    assert response.status_code == 200
+    assert response.json()["alarms"][0]["st"] == "cleared"
+
+
+def test_delta_missing_since_returns_422():
+    client = make_client(InMemoryAlarmStore())
+
+    response = client.get("/agent/alarms/delta")
+
+    assert response.status_code == 422
+
+
+def test_delta_cursor_present_when_more_results_exist():
+    client = make_client(InMemoryAlarmStore())
+    since = ts_past(60)
+    for _ in range(3):
+        client.post("/alarms", json=make_network_alarm())
+
+    response = client.get(f"/agent/alarms/delta?since={since}&limit=2")
+
+    data = response.json()
+    assert len(data["alarms"]) == 2
+    assert data["cursor"] is not None
+
+
+def test_delta_cursor_null_when_no_more_results():
+    client = make_client(InMemoryAlarmStore())
+    since = ts_past(60)
+    client.post("/alarms", json=make_network_alarm())
+
+    response = client.get(f"/agent/alarms/delta?since={since}&limit=10")
+
+    assert response.json()["cursor"] is None
 
 
 # --- PATCH /alarms/{id}/state ---

@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from ..models.alarm import Alarm, AlarmCategory, Severity
@@ -42,6 +43,27 @@ class AgentAlarmListResponse(BaseModel):
     alarms: list[AgentAlarm]
     cursor: str | None = None
     total: int
+
+
+class AgentDeltaResponse(BaseModel):
+    alarms: list[AgentAlarm]
+    cursor: str | None = None
+    total: int
+
+
+@router.get("/delta", response_model=AgentDeltaResponse)
+def agent_delta(
+    since: datetime = Query(...),
+    cursor: datetime | None = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    store: InMemoryAlarmStore = Depends(get_alarm_store),
+) -> AgentDeltaResponse:
+    alarms, next_cursor = store.list_since(since=since, cursor=cursor, limit=limit)
+    return AgentDeltaResponse(
+        alarms=[AgentAlarm.from_alarm(a) for a in alarms],
+        cursor=next_cursor.isoformat() if next_cursor else None,
+        total=len(alarms),
+    )
 
 
 @router.get("", response_model=AgentAlarmListResponse)
