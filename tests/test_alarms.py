@@ -109,6 +109,57 @@ def test_filter_alarms_by_severity():
     assert data["alarms"][0]["perceived_severity"] == "critical"
 
 
+# --- PATCH /alarms/{id}/state ---
+
+def test_valid_state_transition_returns_updated_alarm():
+    client = make_client(InMemoryAlarmStore())
+    created = client.post("/alarms", json=make_network_alarm()).json()
+    alarm_id = created["id"]
+
+    response = client.patch(f"/alarms/{alarm_id}/state", json={"state": "acknowledged"})
+
+    assert response.status_code == 200
+    assert response.json()["alarm_state"] == "acknowledged"
+    assert response.json()["id"] == alarm_id
+
+
+def test_invalid_state_transition_returns_422():
+    client = make_client(InMemoryAlarmStore())
+    alarm_id = client.post("/alarms", json=make_network_alarm()).json()["id"]
+
+    response = client.patch(f"/alarms/{alarm_id}/state", json={"state": "raised"})
+
+    assert response.status_code == 422
+
+
+def test_transitioning_cleared_alarm_returns_422():
+    client = make_client(InMemoryAlarmStore())
+    alarm_id = client.post("/alarms", json=make_network_alarm()).json()["id"]
+    client.patch(f"/alarms/{alarm_id}/state", json={"state": "cleared"})
+
+    response = client.patch(f"/alarms/{alarm_id}/state", json={"state": "acknowledged"})
+
+    assert response.status_code == 422
+
+
+def test_transition_unknown_alarm_returns_404():
+    client = make_client(InMemoryAlarmStore())
+
+    response = client.patch("/alarms/alm_unknown/state", json={"state": "acknowledged"})
+
+    assert response.status_code == 404
+
+
+def test_updated_at_changes_after_transition():
+    client = make_client(InMemoryAlarmStore())
+    created = client.post("/alarms", json=make_network_alarm()).json()
+    original_updated_at = created["updated_at"]
+
+    updated = client.patch(f"/alarms/{created['id']}/state", json={"state": "acknowledged"}).json()
+
+    assert updated["updated_at"] != original_updated_at
+
+
 # --- POST /alarms ---
 
 def test_create_alarm_returns_201_with_assigned_id():

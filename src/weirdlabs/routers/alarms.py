@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from ..models.alarm import Alarm, AlarmCreate, AlarmCategory, Severity
+from ..models.alarm import Alarm, AlarmCreate, AlarmCategory, AlarmState, Severity, VALID_TRANSITIONS
 from ..store import InMemoryAlarmStore, get_alarm_store
 
 router = APIRouter(prefix="/alarms", tags=["alarms"])
@@ -15,6 +15,27 @@ class Pagination(BaseModel):
 class AlarmListResponse(BaseModel):
     alarms: list[Alarm]
     pagination: Pagination
+
+
+class StateTransitionRequest(BaseModel):
+    state: AlarmState
+
+
+@router.patch("/{alarm_id}/state", response_model=Alarm)
+def transition_alarm_state(
+    alarm_id: str,
+    body: StateTransitionRequest,
+    store: InMemoryAlarmStore = Depends(get_alarm_store),
+) -> Alarm:
+    alarm = store.get_by_id(alarm_id)
+    if alarm is None:
+        raise HTTPException(status_code=404, detail=f"Alarm {alarm_id} not found")
+    if body.state not in VALID_TRANSITIONS[alarm.alarm_state]:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot transition from '{alarm.alarm_state}' to '{body.state}'",
+        )
+    return store.transition_state(alarm_id, body.state)
 
 
 @router.post("", response_model=Alarm, status_code=201)

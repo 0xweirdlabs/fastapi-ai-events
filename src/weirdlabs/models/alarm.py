@@ -1,7 +1,11 @@
 from enum import StrEnum
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field
 import uuid
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class AlarmCategory(StrEnum):
@@ -55,11 +59,22 @@ class AlarmCreate(BaseModel):
     parent_alarm_id: str | None = None
 
 
+VALID_TRANSITIONS: dict[AlarmState, set[AlarmState]] = {
+    AlarmState.RAISED: {AlarmState.ACKNOWLEDGED, AlarmState.ESCALATED, AlarmState.SUPPRESSED, AlarmState.IN_MAINTENANCE, AlarmState.CLEARED},
+    AlarmState.ACKNOWLEDGED: {AlarmState.ESCALATED, AlarmState.CLEARED},
+    AlarmState.ESCALATED: {AlarmState.ACKNOWLEDGED, AlarmState.CLEARED},
+    AlarmState.SUPPRESSED: {AlarmState.RAISED, AlarmState.CLEARED},
+    AlarmState.IN_MAINTENANCE: {AlarmState.RAISED},
+    AlarmState.CLEARED: set(),
+}
+
+
 class Alarm(BaseModel):
     id: str = Field(default_factory=lambda: f"alm_{uuid.uuid4().hex[:8]}")
     alarm_category: AlarmCategory
     perceived_severity: Severity
     alarm_state: AlarmState
     alarm_raised_time: datetime
+    updated_at: datetime = Field(default_factory=_now)
     managed_object: ManagedObject
     parent_alarm_id: str | None = None
